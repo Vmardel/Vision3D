@@ -1,4 +1,6 @@
 import numpy as np #funciones matematicas
+import matplotlib.pyplot as plt
+from PIL import Image
 
 def normalizar_puntos(pts):
     centroide = np.mean(pts, axis=0)
@@ -113,6 +115,40 @@ contamos cuantos puntos cumplen con el modelo. Guardamos la mejor version de F e
 obteniendo una estimacion mas confiable.
 '''
 
+def dibujar_lineas(matches_img_path, pts1, pts2, F, inliers):
+    img = np.array(Image.open(matches_img_path))
+    pts1_in = pts1[inliers]
+    pts2_in = pts2[inliers]
+
+    pts1_h = np.hstack([pts1_in, np.ones((len(inliers), 1))])
+    lines2 = (F @ pts1_h.T).T
+
+    pts2_h = np.hstack([pts2_in, np.ones((len(inliers), 1))])
+    lines1 = (F.T @ pts2_h.T).T
+
+    fig, ax = plt.subplots(figsize=(15,10))
+    ax.imshow(img)
+    ax.axis('off')
+
+    width = img.shape[1] // 2
+
+    for (a,b,c), (x,y) in zip(lines2, pts1_in):
+        x0 = width + 0
+        y0 = int(-(a*x0 + c)/b) if b != 0 else 0
+        x1 = width + width
+        y1 = int(-(a*x1 + c)/b) if b != 0 else img.shape[0]
+        ax.plot([x0,x1], [y0,y1], 'r-', linewidth=0.8)
+
+    for (a,b,c), (x,y) in zip(lines1, pts2_in):
+        x0 = 0
+        y0 = int(-(a*x0 + c)/b) if b != 0 else 0
+        x1 = width
+        y1 = int(-(a*x1 + c)/b) if b != 0 else img.shape[0]
+        ax.plot([x0,x1], [y0,y1], 'b-', linewidth=0.8)
+
+    plt.tight_layout()
+    plt.savefig("output/lineas_epipolares.png")
+
 if __name__ == "__main__":
     # Cargar los puntos emparejados
     pts1 = np.load("output/pts1.npy")
@@ -127,6 +163,9 @@ if __name__ == "__main__":
     # Guardar F e inliers para la siguiente fase
     np.save("output/F.npy", F)
     np.save("output/inliers.npy", inliers)
+
+    # Visualizar líneas epipolares sin OpenCV
+    dibujar_lineas("output/sift_matches.png", pts1, pts2, F, inliers)
 
 '''
 Dibujar lineas epipolares

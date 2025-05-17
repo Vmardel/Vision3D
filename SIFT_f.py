@@ -2,7 +2,7 @@ import cv2 #opencv
 import numpy as np #funciones matematicas
 import os #trata de directorios
 
-def obtener_correspondencias_SIFT(img_izq, img_der, guardar_en="output"):
+def obtener_SIFT(img_izq, img_der, guardar_en="output"):
     # Cargar imagenes en escala de grises
     Il = cv2.imread(img_izq, cv2.IMREAD_GRAYSCALE)
     Ir = cv2.imread(img_der, cv2.IMREAD_GRAYSCALE)
@@ -68,5 +68,5 @@ if __name__ == "__main__":
     img_izq = "/mnt/c/Users/vicen/Documents/GitHub/Vision3D/Imagenes/Image15.png"
     img_der = "/mnt/c/Users/vicen/Documents/GitHub/Vision3D/Imagenes/Image16.png"
 
-    obtener_correspondencias_SIFT(img_izq, img_der)
+    obtener_SIFT(img_izq, img_der)
 
