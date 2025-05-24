@@ -71,7 +71,3 @@ if __name__ == "__main__":
     np.save("output/K_P.npy", K)
     np.save("output/R_P.npy", R)
     np.save("output/t_P.npy", t)
-
-'''
-reazliar un test de los inputs y outputs (testeo unitario / unit tester)
-'''

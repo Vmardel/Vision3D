@@ -64,7 +64,6 @@ def obtener_SIFT(img_izq, img_der, guardar_en="output"):
     '''
 
 if __name__ == "__main__":
-    # Cambia estas rutas por tus imagenes
     img_izq = "/mnt/c/Users/vicen/Documents/GitHub/Vision3D/Imagenes/Image15.png"
     img_der = "/mnt/c/Users/vicen/Documents/GitHub/Vision3D/Imagenes/Image16.png"
 

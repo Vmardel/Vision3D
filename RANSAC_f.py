@@ -1,6 +1,7 @@
 import numpy as np #funciones matematicas
 import matplotlib.pyplot as plt
-from PIL import Image
+from PIL import Image, ImageOps
+import random
 
 def normalizar_puntos(pts):
     centroide = np.mean(pts, axis=0)
@@ -115,6 +116,147 @@ contamos cuantos puntos cumplen con el modelo. Guardamos la mejor version de F e
 obteniendo una estimacion mas confiable.
 '''
 
+
+#diagrama epipolar con nuestra imagenes, con menos lineas, quiere seleccionar puntos de la imagen sin las correspondencias mostrar si se puede donde converge el epipolo.
+def dibujar_lineas(imagen1_path, imagen2_path, pts1, pts2, F, inliers, num_lineas=10, mostrar_epipolos=False):
+    # Corregir orientación EXIF
+    img1 = ImageOps.exif_transpose(Image.open(imagen1_path))
+    img2 = ImageOps.exif_transpose(Image.open(imagen2_path))
+
+    img1 = np.array(img1)
+    img2 = np.array(img2)
+
+    # Redimensionar alturas
+    if img1.shape[0] != img2.shape[0]:
+        altura_comun = min(img1.shape[0], img2.shape[0])
+        img1 = np.array(Image.fromarray(img1).resize((img1.shape[1], altura_comun)))
+        img2 = np.array(Image.fromarray(img2).resize((img2.shape[1], altura_comun)))
+
+    img = np.hstack((img1, img2))
+    width = img1.shape[1]
+
+    # Submuestreo aleatorio de líneas
+    if len(inliers) > num_lineas:
+        muestra = random.sample(list(inliers), num_lineas)
+    else:
+        muestra = inliers
+
+    pts1_in = pts1[muestra]
+    pts2_in = pts2[muestra]
+
+    pts1_h = np.hstack([pts1_in, np.ones((len(muestra), 1))])
+    pts2_h = np.hstack([pts2_in, np.ones((len(muestra), 1))])
+
+    lines2 = (F @ pts1_h.T).T
+    lines1 = (F.T @ pts2_h.T).T
+
+    fig, axs = plt.subplots(1, 2, figsize=(14, 7))
+
+    # Left image
+    axs[0].imshow(img1)
+    axs[0].set_title("Left image")
+    axs[0].axis("off")
+    for (a, b, c), (x, y) in zip(lines1, pts1_in):
+        x0, x1 = 0, img1.shape[1]
+        y0 = int(-(a * x0 + c) / b) if b != 0 else 0
+        y1 = int(-(a * x1 + c) / b) if b != 0 else img1.shape[0]
+        axs[0].plot([x0, x1], [y0, y1], 'k-', linewidth=1)
+        axs[0].plot(x, y, 'wo', markersize=6, markeredgecolor='black')
+
+    # Right image
+    axs[1].imshow(img2)
+    axs[1].set_title("Right image")
+    axs[1].axis("off")
+    for (a, b, c), (x, y) in zip(lines2, pts2_in):
+        x0, x1 = 0, img2.shape[1]
+        y0 = int(-(a * x0 + c) / b) if b != 0 else 0
+        y1 = int(-(a * x1 + c) / b) if b != 0 else img2.shape[0]
+        axs[1].plot([x0, x1], [y0, y1], 'k-', linewidth=1)
+        axs[1].plot(x, y, 'wo', markersize=6, markeredgecolor='black')
+
+    # Calcular epipolos
+    _, _, Vt = np.linalg.svd(F)
+    epipolo_d = Vt[-1] / Vt[-1][2]  # En imagen derecha
+
+    _, _, Vt_T = np.linalg.svd(F.T)
+    epipolo_i = Vt_T[-1] / Vt_T[-1][2]  # En imagen izquierda
+
+    # Dibujar epipolos en las imágenes
+    axs[0].plot(epipolo_i[0], epipolo_i[1], 'rx', markersize=10, label='Epipolo')
+    axs[1].plot(epipolo_d[0], epipolo_d[1], 'rx', markersize=10, label='Epipolo')
+
+    # Leyenda (solo una vez, si quieres)
+    axs[0].legend(loc='lower right')
+
+    plt.tight_layout()
+    plt.savefig("output/lineas_epipolares.png")
+    plt.show()
+
+
+
+if __name__ == "__main__":
+    # Cargar los puntos emparejados
+    pts1 = np.load("output/pts1.npy")
+    pts2 = np.load("output/pts2.npy")
+
+    # Ejecutar RANSAC para obtener F
+    F, inliers = ransac_fundamental(pts1, pts2, threshold=1.0)
+
+    print("Matriz fundamental F:\n", F)
+    print(f"\nSe encontraron {len(inliers)} correspondencias validas.")
+
+    # Guardar F e inliers para la siguiente fase
+    np.save("output/F.npy", F)
+    np.save("output/inliers.npy", inliers)
+
+    # Visualizar líneas epipolares sin OpenCV
+    '''
+    dibujar_lineas("output/sift_matches.png", pts1, pts2, F, inliers)
+    '''
+    '''
+    dibujar_lineas("Imagenes/image15.png", "Imagenes/image16.png", pts1, pts2, F, inliers)
+    '''
+    dibujar_lineas("Imagenes/image15.png", "Imagenes/image16.png", pts1, pts2, F, inliers, num_lineas=10)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+'''
+pruebas de las lineas epipolares que no nos has llegado a gustar.
+#diagrama epipolar con nuestra imagenes, con menos lineas, quiere seleccionar puntos de la imagen sin las correspondencias mostrar si se puede donde converge el epipolo.
 def dibujar_lineas(matches_img_path, pts1, pts2, F, inliers):
     img = np.array(Image.open(matches_img_path))
     pts1_in = pts1[inliers]
@@ -148,25 +290,72 @@ def dibujar_lineas(matches_img_path, pts1, pts2, F, inliers):
 
     plt.tight_layout()
     plt.savefig("output/lineas_epipolares.png")
-
-if __name__ == "__main__":
-    # Cargar los puntos emparejados
-    pts1 = np.load("output/pts1.npy")
-    pts2 = np.load("output/pts2.npy")
-
-    # Ejecutar RANSAC para obtener F
-    F, inliers = ransac_fundamental(pts1, pts2, threshold=1.0)
-
-    print("Matriz fundamental F:\n", F)
-    print(f"\nSe encontraron {len(inliers)} correspondencias validas.")
-
-    # Guardar F e inliers para la siguiente fase
-    np.save("output/F.npy", F)
-    np.save("output/inliers.npy", inliers)
-
-    # Visualizar líneas epipolares sin OpenCV
-    dibujar_lineas("output/sift_matches.png", pts1, pts2, F, inliers)
+'''
 
 '''
-Dibujar lineas epipolares
+def dibujar_lineas(imagen1_path, imagen2_path, pts1, pts2, F, inliers, mostrar_epipolos=True):
+    # Corregir orientación automática
+    img1 = ImageOps.exif_transpose(Image.open(imagen1_path))
+    img2 = ImageOps.exif_transpose(Image.open(imagen2_path))
+
+    img1 = np.array(img1)
+    img2 = np.array(img2)
+
+    # Redimensionar para que tengan la misma altura
+    if img1.shape[0] != img2.shape[0]:
+        altura_comun = min(img1.shape[0], img2.shape[0])
+        img1 = np.array(Image.fromarray(img1).resize((img1.shape[1], altura_comun)))
+        img2 = np.array(Image.fromarray(img2).resize((img2.shape[1], altura_comun)))
+
+    # Combinar horizontalmente
+    img = np.hstack((img1, img2))
+
+    pts1_in = pts1[inliers]
+    pts2_in = pts2[inliers]
+
+    pts1_h = np.hstack([pts1_in, np.ones((len(inliers), 1))])
+    pts2_h = np.hstack([pts2_in, np.ones((len(inliers), 1))])
+
+    lines2 = (F @ pts1_h.T).T
+    lines1 = (F.T @ pts2_h.T).T
+
+    fig, ax = plt.subplots(figsize=(15, 10))
+    ax.imshow(img)
+    ax.axis('off')
+
+    width = img1.shape[1]
+
+    # Dibujar líneas epipolares en img2 (derecha)
+    for (a, b, c), (x, y) in zip(lines2, pts2_in):
+        x0 = width
+        x1 = width * 2
+        y0 = int(-(a * x0 + c) / b) if b != 0 else 0
+        y1 = int(-(a * x1 + c) / b) if b != 0 else img.shape[0]
+        ax.plot([x0, x1], [y0, y1], 'r-', linewidth=0.8)
+
+    # Dibujar líneas epipolares en img1 (izquierda)
+    for (a, b, c), (x, y) in zip(lines1, pts1_in):
+        x0 = 0
+        x1 = width
+        y0 = int(-(a * x0 + c) / b) if b != 0 else 0
+        y1 = int(-(a * x1 + c) / b) if b != 0 else img.shape[0]
+        ax.plot([x0, x1], [y0, y1], 'b-', linewidth=0.8)
+
+    # Dibujar epipolos (opcional)
+    if mostrar_epipolos:
+        _, _, Vt = np.linalg.svd(F)
+        epipolo2 = Vt[-1]
+        epipolo2 /= epipolo2[2]
+        ax.plot(epipolo2[0] + width, epipolo2[1], 'ro', markersize=8, label='Epipolo 2')
+
+        _, _, Vt = np.linalg.svd(F.T)
+        epipolo1 = Vt[-1]
+        epipolo1 /= epipolo1[2]
+        ax.plot(epipolo1[0], epipolo1[1], 'bo', markersize=8, label='Epipolo 1')
+
+        ax.legend()
+
+    plt.tight_layout()
+    plt.savefig("output/lineas_epipolares.png")
+    plt.show()
 '''

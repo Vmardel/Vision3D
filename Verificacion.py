@@ -21,5 +21,9 @@ def verificar_rectificacion(img_izq, img_der, guardar_en="output/verificacion_re
     os.makedirs(os.path.dirname(guardar_en), exist_ok=True)
     cv2.imwrite(guardar_en, img_comb)
 
+'''
+Dibuja líneas horizontales verdes para la verificación visual de que las imágenes están alineadas horizontalmente (rectificadas):
+'''
+
 if __name__ == "__main__":
-    verificar_rectificacion("output/rect_izq.png", "output/rect_der.png")
+    verificar_rectificacion("output/rect_hartley_izq.png", "output/rect_hartley_der.png")
