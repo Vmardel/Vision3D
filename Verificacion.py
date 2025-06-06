@@ -2,7 +2,7 @@ import cv2 #opencv
 import numpy as np #funciones matematicas
 import os #trata de directorios
 
-def verificar_rectificacion(img_izq, img_der, guardar_en="output/verificacion_rectificacion.png"):
+def verificar_rectificacion(img_izq, img_der, guardar_en="output/verificacion_prueba.png"):
     img_left = cv2.imread(img_izq)
     img_right = cv2.imread(img_der)
 

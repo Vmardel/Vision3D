@@ -96,7 +96,7 @@ if __name__ == "__main__":
     pts2 = np.load("output/pts2.npy")
     inliers = np.load("output/inliers.npy")
 
-    img_izq = "Imagenes/image15.png"
-    img_der = "Imagenes/image16.png"
+    img_izq = "Imagenes/redimensionadas/left1.png"
+    img_der = "Imagenes/redimensionadas/right1.png"
 
     rectificacion_hartley_algoritmo(F, pts1[inliers], pts2[inliers], img_izq, img_der)

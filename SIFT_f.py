@@ -28,7 +28,7 @@ def obtener_SIFT(img_izq, img_der, guardar_en="output"):
     # Ratio test de Lowe
     good_matches = []
     for m, n in matches:
-        if m.distance < 0.67 * n.distance:
+        if m.distance < 0.51 * n.distance:
             good_matches.append(m)
 
     print(f" {len(good_matches)} correspondencias validas encontradas.")
@@ -64,8 +64,8 @@ def obtener_SIFT(img_izq, img_der, guardar_en="output"):
     '''
 
 if __name__ == "__main__":
-    img_izq = "/mnt/c/Users/vicen/Documents/GitHub/Vision3D/Imagenes/Image15.png"
-    img_der = "/mnt/c/Users/vicen/Documents/GitHub/Vision3D/Imagenes/Image16.png"
+    img_izq = "/mnt/c/Users/vicen/Documents/GitHub/Vision3D/Imagenes/redimensionadas/left1.png"
+    img_der = "/mnt/c/Users/vicen/Documents/GitHub/Vision3D/Imagenes/redimensionadas/right1.png"
 
     obtener_SIFT(img_izq, img_der)
 

@@ -116,7 +116,8 @@ contamos cuantos puntos cumplen con el modelo. Guardamos la mejor version de F e
 obteniendo una estimacion mas confiable.
 '''
 
-
+'''
+#cambiar la manera de dibujarlo, quiere dos pares de imagenes, en una la derecha tendra puntos y la izquierda lineas y luego cambiarlo 
 #diagrama epipolar con nuestra imagenes, con menos lineas, quiere seleccionar puntos de la imagen sin las correspondencias mostrar si se puede donde converge el epipolo.
 def dibujar_lineas(imagen1_path, imagen2_path, pts1, pts2, F, inliers, num_lineas=10, mostrar_epipolos=False):
     # Corregir orientación EXIF
@@ -191,7 +192,103 @@ def dibujar_lineas(imagen1_path, imagen2_path, pts1, pts2, F, inliers, num_linea
     plt.tight_layout()
     plt.savefig("output/lineas_epipolares.png")
     plt.show()
+'''
 
+def dibujar_lineas(imagen1_path, imagen2_path, pts1, pts2, F, inliers, num_lineas=10, mostrar_epipolos=True):
+    from PIL import ImageOps
+
+    # Cargar y corregir orientación EXIF
+    img1 = ImageOps.exif_transpose(Image.open(imagen1_path))
+    img2 = ImageOps.exif_transpose(Image.open(imagen2_path))
+
+    # Redimensionar ambas imágenes para que tengan la misma altura (la menor entre las dos)
+    altura_comun = min(img1.height, img2.height)
+    img1 = img1.resize((int(img1.width * altura_comun / img1.height), altura_comun), Image.Resampling.LANCZOS)
+    img2 = img2.resize((int(img2.width * altura_comun / img2.height), altura_comun), Image.Resampling.LANCZOS)
+
+    img1 = np.array(img1)
+    img2 = np.array(img2)
+
+    # Submuestreo aleatorio
+    if len(inliers) > num_lineas:
+        muestra = random.sample(list(inliers), num_lineas)
+    else:
+        muestra = inliers
+
+    pts1_in = pts1[muestra]
+    pts2_in = pts2[muestra]
+
+    pts1_h = np.hstack([pts1_in, np.ones((len(muestra), 1))])
+    pts2_h = np.hstack([pts2_in, np.ones((len(muestra), 1))])
+
+    lines2 = (F @ pts1_h.T).T  # Líneas en imagen derecha generadas por pts1
+    lines1 = (F.T @ pts2_h.T).T  # Líneas en imagen izquierda generadas por pts2
+
+    # Epipolos
+    _, _, Vt = np.linalg.svd(F)
+    epipolo_der = Vt[-1] / Vt[-1][2]
+
+    _, _, Vt_T = np.linalg.svd(F.T)
+    epipolo_izq = Vt_T[-1] / Vt_T[-1][2]
+
+    def trazar_lineas(ax, img, lineas):
+        ax.imshow(img)
+        ax.axis("off")
+        for a, b, c in lineas:
+            x0, x1 = 0, img.shape[1]
+            if b != 0:
+                y0 = -(a * x0 + c) / b
+                y1 = -(a * x1 + c) / b
+                ax.plot([x0, x1], [y0, y1], 'b-', linewidth=1)
+
+    def trazar_puntos(ax, img, puntos):
+        ax.imshow(img)
+        ax.axis("off")
+        for x, y in puntos:
+            ax.plot(x, y, 'ro', markersize=5, markeredgecolor='black')
+
+    def trazar_epipolo_fuera(ax, epipolo, lado, img_shape):
+        y_lim = img_shape[0]
+        x_offset = 60  # Más separado del borde que antes
+
+        if lado == 'izq':
+            x = -x_offset
+            y = np.clip(epipolo[1], 0, y_lim)
+        elif lado == 'der':
+            x = img_shape[1] + x_offset
+            y = np.clip(epipolo[1], 0, y_lim)
+        else:
+            x, y = epipolo[0], epipolo[1]
+
+        ax.plot(x, y, 'rx', markersize=12)
+
+    #FIGURA 1
+    fig1, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 7))
+    trazar_puntos(ax1, img1, pts1_in)
+    ax1.set_title("Imagen Izquierda (Puntos)")
+    trazar_lineas(ax2, img2, lines2)
+    ax2.set_title("Imagen Derecha (Líneas)")
+    if mostrar_epipolos:
+        trazar_epipolo_fuera(ax1, epipolo_izq, 'izq', img1.shape)
+
+    plt.subplots_adjust(wspace=0.05)  
+    plt.tight_layout()
+    plt.savefig("output/epipolar_fig1.png")
+    plt.close(fig1)
+
+    #FIGURA 2
+    fig2, (ax3, ax4) = plt.subplots(1, 2, figsize=(14, 7))
+    trazar_lineas(ax3, img1, lines1)
+    ax3.set_title("Imagen Izquierda (Líneas)")
+    trazar_puntos(ax4, img2, pts2_in)
+    ax4.set_title("Imagen Derecha (Puntos)")
+    if mostrar_epipolos:
+        trazar_epipolo_fuera(ax4, epipolo_der, 'der', img2.shape)
+
+    plt.subplots_adjust(wspace=0.05)
+    plt.tight_layout()
+    plt.savefig("output/epipolar_fig2.png")
+    plt.close(fig2)
 
 
 if __name__ == "__main__":
@@ -216,146 +313,4 @@ if __name__ == "__main__":
     '''
     dibujar_lineas("Imagenes/image15.png", "Imagenes/image16.png", pts1, pts2, F, inliers)
     '''
-    dibujar_lineas("Imagenes/image15.png", "Imagenes/image16.png", pts1, pts2, F, inliers, num_lineas=10)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-'''
-pruebas de las lineas epipolares que no nos has llegado a gustar.
-#diagrama epipolar con nuestra imagenes, con menos lineas, quiere seleccionar puntos de la imagen sin las correspondencias mostrar si se puede donde converge el epipolo.
-def dibujar_lineas(matches_img_path, pts1, pts2, F, inliers):
-    img = np.array(Image.open(matches_img_path))
-    pts1_in = pts1[inliers]
-    pts2_in = pts2[inliers]
-
-    pts1_h = np.hstack([pts1_in, np.ones((len(inliers), 1))])
-    lines2 = (F @ pts1_h.T).T
-
-    pts2_h = np.hstack([pts2_in, np.ones((len(inliers), 1))])
-    lines1 = (F.T @ pts2_h.T).T
-
-    fig, ax = plt.subplots(figsize=(15,10))
-    ax.imshow(img)
-    ax.axis('off')
-
-    width = img.shape[1] // 2
-
-    for (a,b,c), (x,y) in zip(lines2, pts1_in):
-        x0 = width + 0
-        y0 = int(-(a*x0 + c)/b) if b != 0 else 0
-        x1 = width + width
-        y1 = int(-(a*x1 + c)/b) if b != 0 else img.shape[0]
-        ax.plot([x0,x1], [y0,y1], 'r-', linewidth=0.8)
-
-    for (a,b,c), (x,y) in zip(lines1, pts2_in):
-        x0 = 0
-        y0 = int(-(a*x0 + c)/b) if b != 0 else 0
-        x1 = width
-        y1 = int(-(a*x1 + c)/b) if b != 0 else img.shape[0]
-        ax.plot([x0,x1], [y0,y1], 'b-', linewidth=0.8)
-
-    plt.tight_layout()
-    plt.savefig("output/lineas_epipolares.png")
-'''
-
-'''
-def dibujar_lineas(imagen1_path, imagen2_path, pts1, pts2, F, inliers, mostrar_epipolos=True):
-    # Corregir orientación automática
-    img1 = ImageOps.exif_transpose(Image.open(imagen1_path))
-    img2 = ImageOps.exif_transpose(Image.open(imagen2_path))
-
-    img1 = np.array(img1)
-    img2 = np.array(img2)
-
-    # Redimensionar para que tengan la misma altura
-    if img1.shape[0] != img2.shape[0]:
-        altura_comun = min(img1.shape[0], img2.shape[0])
-        img1 = np.array(Image.fromarray(img1).resize((img1.shape[1], altura_comun)))
-        img2 = np.array(Image.fromarray(img2).resize((img2.shape[1], altura_comun)))
-
-    # Combinar horizontalmente
-    img = np.hstack((img1, img2))
-
-    pts1_in = pts1[inliers]
-    pts2_in = pts2[inliers]
-
-    pts1_h = np.hstack([pts1_in, np.ones((len(inliers), 1))])
-    pts2_h = np.hstack([pts2_in, np.ones((len(inliers), 1))])
-
-    lines2 = (F @ pts1_h.T).T
-    lines1 = (F.T @ pts2_h.T).T
-
-    fig, ax = plt.subplots(figsize=(15, 10))
-    ax.imshow(img)
-    ax.axis('off')
-
-    width = img1.shape[1]
-
-    # Dibujar líneas epipolares en img2 (derecha)
-    for (a, b, c), (x, y) in zip(lines2, pts2_in):
-        x0 = width
-        x1 = width * 2
-        y0 = int(-(a * x0 + c) / b) if b != 0 else 0
-        y1 = int(-(a * x1 + c) / b) if b != 0 else img.shape[0]
-        ax.plot([x0, x1], [y0, y1], 'r-', linewidth=0.8)
-
-    # Dibujar líneas epipolares en img1 (izquierda)
-    for (a, b, c), (x, y) in zip(lines1, pts1_in):
-        x0 = 0
-        x1 = width
-        y0 = int(-(a * x0 + c) / b) if b != 0 else 0
-        y1 = int(-(a * x1 + c) / b) if b != 0 else img.shape[0]
-        ax.plot([x0, x1], [y0, y1], 'b-', linewidth=0.8)
-
-    # Dibujar epipolos (opcional)
-    if mostrar_epipolos:
-        _, _, Vt = np.linalg.svd(F)
-        epipolo2 = Vt[-1]
-        epipolo2 /= epipolo2[2]
-        ax.plot(epipolo2[0] + width, epipolo2[1], 'ro', markersize=8, label='Epipolo 2')
-
-        _, _, Vt = np.linalg.svd(F.T)
-        epipolo1 = Vt[-1]
-        epipolo1 /= epipolo1[2]
-        ax.plot(epipolo1[0], epipolo1[1], 'bo', markersize=8, label='Epipolo 1')
-
-        ax.legend()
-
-    plt.tight_layout()
-    plt.savefig("output/lineas_epipolares.png")
-    plt.show()
-'''
+    dibujar_lineas("Imagenes/redimensionadas/left1.png", "Imagenes/redimensionadas/right1.png", pts1, pts2, F, inliers, num_lineas=10)
