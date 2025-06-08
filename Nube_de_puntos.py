@@ -1,180 +1,124 @@
 import numpy as np
 from PIL import Image
-import matplotlib.pyplot as plt
-import cv2 as cv
 import open3d as o3d
+from scipy.ndimage import gaussian_filter, generic_filter
 
-# ---------------------------
-# Block Matching Class (BM)
-# ---------------------------
+def obtener_ventana(imagen, fila, col, tam_ventana, desplaz=0):
+    radio = tam_ventana // 2
+    fila_inicio = fila - radio
+    fila_fin = fila + radio
+    col_inicio = col - radio - desplaz + 1
+    col_fin = col + radio - desplaz + 1
+    return imagen[fila_inicio:fila_fin, col_inicio:col_fin]
 
-class BM:
-    def __init__(self, kernel_size, max_disparity, subpixel_interpolation):
-        self.kernel_size = kernel_size
-        self.max_disparity = max_disparity
-        self.kernel_half = kernel_size // 2
-        self.offset_adjust = 255 / max_disparity
-        self.subpixel_interpolation = subpixel_interpolation
+def ajuste_subpixel(pos_mejor, lista_errores, max_disp):
+    errores = np.array(lista_errores, dtype=np.float64)
+    if (0 < pos_mejor < max_disp - 1 and
+        np.all(np.isfinite(errores[pos_mejor-1:pos_mejor+2]))
+    ):
+        denom = errores[pos_mejor-1] + errores[pos_mejor+1] - 2 * errores[pos_mejor]
+        if denom != 0:
+            num = errores[pos_mejor-1] - errores[pos_mejor+1]
+            corr = num / (2 * denom)
+            if -1 <= corr <= 1:
+                return corr
+    return 0.0
 
-    def _get_window(self, y, x, img, offset=0):
-        y_start = y - self.kernel_half
-        y_end = y + self.kernel_half
-        x_start = x - self.kernel_half - offset + 1
-        x_end = x + self.kernel_half - offset + 1
-        return img[y_start:y_end, x_start:x_end]
 
-    def _compute_subpixel_offset(self, best_offset, errors):
-        errors = np.array(errors, dtype=np.float64)
-        if (
-            0 < best_offset < self.max_disparity - 1 and
-            np.isfinite(errors[best_offset]) and
-            np.isfinite(errors[best_offset - 1]) and
-            np.isfinite(errors[best_offset + 1])
-        ):
-            denom = errors[best_offset - 1] + errors[best_offset + 1] - 2 * errors[best_offset]
-            if denom != 0:
-                numerator = errors[best_offset - 1] - errors[best_offset + 1]
-                subpixel = numerator / (2 * denom)
-                if -1.0 <= subpixel <= 1.0:
-                    return subpixel
-        return 0.0
+def calcular_mapa_disparidad(img_izq, img_der, tam_ventana=5, max_disp=64, usar_subpixel=True):
+    alto, ancho = img_izq.shape
+    mapa_disp = np.zeros_like(img_izq, dtype=np.float32)
+    radio = tam_ventana // 2
+    escala = 255 / max_disp
 
-    def compute(self, left, right):
-        h, w = left.shape
-        disp_map = np.zeros_like(left, dtype=np.float32)
+    for y in range(radio, alto - radio):
+        for x in range(max_disp, ancho - radio):
+            lista_errores = []
+            mejor_disp = 0
+            error_min = float('inf')
 
-        for y in range(self.kernel_half, h - self.kernel_half):
-            for x in range(self.max_disparity, w - self.kernel_half):
-                best_offset = 0
-                min_error = float("inf")
-                errors = []
+            for d in range(max_disp):
+                ventana_izq = obtener_ventana(img_izq, y, x, tam_ventana)
+                ventana_der = obtener_ventana(img_der, y, x, tam_ventana, d)
 
-                for offset in range(self.max_disparity):
-                    W_left = self._get_window(y, x, left)
-                    W_right = self._get_window(y, x, right, offset)
+                if ventana_izq.shape != ventana_der.shape:
+                    lista_errores.append(np.inf)
+                    continue
 
-                    if W_left.shape != W_right.shape:
-                        errors.append(np.inf)
-                        continue
+                ssd = np.sum((ventana_izq - ventana_der) ** 2)
+                lista_errores.append(ssd)
 
-                    error = np.sum((W_left - W_right) ** 2)
-                    errors.append(error)
+                if ssd < error_min:
+                    error_min = ssd
+                    mejor_disp = d
 
-                    if error < min_error:
-                        min_error = error
-                        best_offset = offset
+            if usar_subpixel:
+                mejor_disp += ajuste_subpixel(mejor_disp, lista_errores, max_disp)
 
-                if self.subpixel_interpolation:
-                    best_offset += self._compute_subpixel_offset(best_offset, errors)
+            mapa_disp[y, x] = mejor_disp * escala
 
-                disp_map[y, x] = best_offset * self.offset_adjust
+    return mapa_disp
 
-        return disp_map
+def filtro_bilateral_gris(imagen, sigma_esp=3, sigma_int=0.1):
+    def filtro_vecino(parche):
+        centro = parche[len(parche)//2]
+        pes_espacial = np.exp(-0.5 * ((np.arange(len(parche)) - len(parche)//2)**2) / (sigma_esp**2))
+        pes_intensidad = np.exp(-0.5 * ((parche - centro)**2) / (sigma_int**2))
+        pesos = pes_espacial * pes_intensidad
+        return np.sum(parche * pesos) / np.sum(pesos)
 
-# ---------------------------
-# Utilities
-# ---------------------------
+    return generic_filter(imagen, filtro_vecino, size=3, mode='reflect')
 
-def load_images(root):
-    left = Image.open(f"{root}/left.png").convert("RGB")
-    right = Image.open(f"{root}/right.png").convert("RGB")
-    gt = Image.open(f"{root}/gt.png").convert("L")
-    return left, right, gt
+def afilar_imagen(img_norm, sigma=0.3, factor=0.5, limite_min=0.2):
+    desenf = gaussian_filter(img_norm, sigma=sigma)
+    img_afilada = np.clip(img_norm + factor * (img_norm - desenf), limite_min, 1)
+    return img_afilada
 
-def compute_metrics(pred, gt, threshold=3.0):
-    gt = np.array(gt)
-    mask = gt > 0
-    pred_valid = pred[mask].astype(np.float32)
-    gt_valid = gt[mask].astype(np.float32)
+def guardar_imagen_disparidad(mapa_disp, ruta="output/disparidad2.png"):
+    disp_filtrada = filtro_bilateral_gris(mapa_disp, sigma_esp=2, sigma_int=0.1)
+    disp_norm = (disp_filtrada - disp_filtrada.min()) / (disp_filtrada.max() - disp_filtrada.min() + 1e-6)
+    disp_afilada = afilar_imagen(disp_norm)
+    img_disp = Image.fromarray(np.uint8(disp_afilada * 255), mode='L')
+    img_disp.save(ruta)
+    print(f"Disparidad guardada en: {ruta}")
 
-    abs_error = np.abs(pred_valid - gt_valid)
-    epe = np.mean(abs_error)
-    bad_pixels = np.sum(abs_error > threshold) / len(gt_valid) * 100
-    rmse = np.sqrt(np.mean((pred_valid - gt_valid) ** 2))
-    mae = np.mean(abs_error)
+def generar_nube_puntos(mapa_disp, colores, foco=1.0, base=0.05):
+    h, w = mapa_disp.shape
+    mascara = mapa_disp > 0
+    indices = np.indices((h, w), dtype=np.float32)
+    xs = indices[1][mascara]
+    ys = indices[0][mascara]
+    disp_vals = mapa_disp[mascara]
 
-    return {
-        "EPE": round(float(epe), 2),
-        "Bad Pixel %": round(float(bad_pixels), 2),
-        "RMSE": round(float(rmse), 2),
-        "MAE": round(float(mae), 2)
-    }
+    z = (foco * base) / disp_vals
+    x = (xs - w / 2) * z / foco
+    y = (ys - h / 2) * z / foco
 
-def save_point_cloud(filename, disparity, colors):
-    Q = np.array([[1, 0, 0, -disparity.shape[1] / 2],
-                  [0, -1, 0, disparity.shape[0] / 2],
-                  [0, 0, 0, -0.8 * disparity.shape[1]],
-                  [0, 0, 1 / 0.05, 0]])
+    puntos = np.stack((x, y, z), axis=1)
+    colores_norm = colores[mascara].astype(np.float32) / 255.0
 
-    points_3d = cv.reprojectImageTo3D(disparity, Q)
-    mask = disparity > 0
-    points = points_3d[mask]
-    colors = colors[mask]
-    points = np.hstack([points, colors])
-    
-    header = f"""ply
-format ascii 1.0
-element vertex {len(points)}
-property float x
-property float y
-property float z
-property uchar red
-property uchar green
-property uchar blue
-end_header
-"""
-    with open(filename, "w") as f:
-        f.write(header)
-        np.savetxt(f, points, fmt="%f %f %f %d %d %d")
+    nube = o3d.geometry.PointCloud()
+    nube.points = o3d.utility.Vector3dVector(puntos)
+    nube.colors = o3d.utility.Vector3dVector(colores_norm)
 
-def create_pointcloud(disparity, colors):
-    Q = np.array([[1, 0, 0, -disparity.shape[1] / 2],
-                  [0, -1, 0, disparity.shape[0] / 2],
-                  [0, 0, 0, -0.8 * disparity.shape[1]],
-                  [0, 0, 1 / 0.05, 0]])
+    o3d.visualization.draw_geometries([nube])
 
-    points_3d = cv.reprojectImageTo3D(disparity, Q)
-    mask = disparity > 0
+def cargar_imagenes(ruta_izq, ruta_der):
+    img_izq_rgb = Image.open(ruta_izq).convert("RGB")
+    img_der_rgb = Image.open(ruta_der).convert("RGB")
+    img_izq_gray = np.array(img_izq_rgb.convert("L"))
+    img_der_gray = np.array(img_der_rgb.convert("L"))
+    return img_izq_rgb, img_der_rgb, img_izq_gray, img_der_gray
 
-    points = points_3d[mask]
-    colors = colors[mask].astype(np.float64) / 255.0  # Normalizar colores a [0,1]
+def ejecutar_pipeline():
+    ruta_izq = "/mnt/c/Users/vicen/Documents/GitHub/Vision3D/output/rect_hartley_izq.png"
+    ruta_der = "/mnt/c/Users/vicen/Documents/GitHub/Vision3D/output/rect_hartley_der.png"
 
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(points)
-    pcd.colors = o3d.utility.Vector3dVector(colors)
+    izq_rgb, der_rgb, izq_gray, der_gray = cargar_imagenes(ruta_izq, ruta_der)
 
-    o3d.visualization.draw_geometries([pcd])
-
-# ---------------------------
-# Main Execution
-# ---------------------------
-
-def main():
-    root = "Imagenes/Teddy"  # Cambia la ruta a donde estén tus imágenes
-    left_img, right_img, gt_img = load_images(root)
-
-    left_gray = np.array(left_img.convert("L"))
-    right_gray = np.array(right_img.convert("L"))
-    gt = np.array(gt_img)
-
-    bm = BM(kernel_size=5, max_disparity=64, subpixel_interpolation=True)
-    disparity = bm.compute(left_gray, right_gray)
-
-    metrics = compute_metrics(disparity, gt)
-    print("Métricas de disparidad:")
-    for k, v in metrics.items():
-        print(f"{k}: {v}")
-
-    plt.imshow(disparity, cmap="plasma")
-    plt.title("Mapa de Disparidad")
-    plt.colorbar()
-    plt.show()
-
-    color_array = np.array(left_img)
-    save_point_cloud("pointcloud.ply", disparity, color_array)
-    print("Nube de puntos guardada como pointcloud.ply")
-
-    create_pointcloud(disparity, color_array)  # Visualiza la nube con Open3D
+    disparidad = calcular_mapa_disparidad(izq_gray, der_gray, tam_ventana=5, max_disp=64, usar_subpixel=True)
+    guardar_imagen_disparidad(disparidad)
+    generar_nube_puntos(disparidad, np.array(izq_rgb))
 
 if __name__ == "__main__":
-    main()
+    ejecutar_pipeline()

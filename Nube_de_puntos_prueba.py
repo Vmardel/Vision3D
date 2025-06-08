@@ -24,10 +24,13 @@ class BM:
 
     def _get_window(self, y, x, img, offset=0):
         y_start = y - self.kernel_half
-        y_end = y + self.kernel_half
-        x_start = x - self.kernel_half - offset + 1
-        x_end = x + self.kernel_half - offset + 1
+        y_end = y + self.kernel_half + 1
+        x_start = x - self.kernel_half - offset
+        x_end = x + self.kernel_half + 1 - offset
         return img[y_start:y_end, x_start:x_end]
+
+
+
     
     '''
     centramos la imagen para ejecutar algoritomo
@@ -57,22 +60,31 @@ class BM:
         h, w = left.shape
         disp_map = np.zeros_like(left, dtype=np.float32)
 
-#aumentar tamaño bloque (kernel) para quitar ruieod disparidad
         for y in range(self.kernel_half, h - self.kernel_half):
-            for x in range(self.max_disparity, w - self.kernel_half):
+            for x in range(self.max_disparity + self.kernel_half, w - self.kernel_half):
                 best_offset = 0
                 min_error = float("inf")
                 errors = []
 
+                W_left = self._get_window(y, x, left)
+
+            # Filtro por textura (varianza mínima)
+                if np.var(W_left) < 15:
+                    continue
+
+                W_left_mean = W_left - np.mean(W_left)
+
                 for offset in range(self.max_disparity):
-                    W_left = self._get_window(y, x, left)
                     W_right = self._get_window(y, x, right, offset)
 
                     if W_left.shape != W_right.shape:
                         errors.append(np.inf)
                         continue
 
-                    error = np.sum((W_left - W_right) ** 2)
+                    W_right_mean = W_right - np.mean(W_right)
+
+                # ZSSD: Zero-mean Sum of Squared Differences
+                    error = np.sum((W_left_mean - W_right_mean) ** 2)
                     errors.append(error)
 
                     if error < min_error:
@@ -85,6 +97,7 @@ class BM:
                 disp_map[y, x] = best_offset * self.offset_adjust
 
         return disp_map
+
     
     '''
     nucleo algoritom bm y crea mapa disparidad
@@ -156,7 +169,11 @@ def main():
     left_gray = np.array(left_img.convert("L"))
     right_gray = np.array(right_img.convert("L"))
 
-    bm = BM(kernel_size=9, max_disparity=96, subpixel_interpolation=True)
+    left_gray = cv.equalizeHist(left_gray.astype(np.uint8))
+    right_gray = cv.equalizeHist(right_gray.astype(np.uint8))
+
+
+    bm = BM(kernel_size=11, max_disparity=128, subpixel_interpolation=True)
     disparidad = bm.compute(left_gray, right_gray)
 
     guardar_disparidad(disparidad, "output/gt_estimado.png")

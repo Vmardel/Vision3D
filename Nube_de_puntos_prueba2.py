@@ -80,7 +80,7 @@ def bilateral_filter_grayscale(img, sigma_spatial=3, sigma_range=0.1):
     filtered = generic_filter(img, filter_func, size=3, mode="reflect")
     return filtered
 
-def save_disparity_image(disparity, filename="output/disparidad_mejorada.png"):
+def save_disparity_image(disparity, filename="output/disparidad.png"):
     disparity_filtered = bilateral_filter_grayscale(disparity, sigma_spatial=2, sigma_range=0.1)
 
     min_disp = np.min(disparity_filtered)

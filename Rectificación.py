@@ -86,7 +86,7 @@ def construir_homografias(K, R, t):
     Hr = K @ R_rect @ R.T @ np.linalg.inv(K)
     return Hl, Hr
 
-
+'''
 def rectificacion(img_izq_path, img_der_path, Hl, Hr, out_dir="output"):
     img1 = cargar_imagen(img_izq_path)
     img2 = cargar_imagen(img_der_path)
@@ -97,7 +97,7 @@ def rectificacion(img_izq_path, img_der_path, Hl, Hr, out_dir="output"):
     guardar_imagen(os.path.join(out_dir, "rect_calibrada_izq.png"), rect1)
     guardar_imagen(os.path.join(out_dir, "rect_calibrada_der.png"), rect2)
     print("\nRectificación CALIBRADA completada.")
-
+'''
 
 def rectificacion_hartley(img_izq, img_der, F, pts1, pts2, out_dir="output"):
     from skimage.transform import estimate_transform
@@ -128,7 +128,7 @@ if __name__ == "__main__":
     img_izq = "Imagenes/redimensionadas/left1.png"
     img_der = "Imagenes/redimensionadas/right1.png"
 
-    print("\n--- Rectificación Calibrada ---")
+    #print("\n--- Rectificación Calibrada ---")
     R, t = encontrar_mejor_pose(E, pts1, pts2, inliers, K)
     Hl, Hr = construir_homografias(K, R, t)
 
@@ -137,7 +137,7 @@ if __name__ == "__main__":
     np.save("output/Hl.npy", Hl)
     np.save("output/Hr.npy", Hr)
 
-    rectificacion(img_izq, img_der, Hl, Hr)
+    #rectificacion(img_izq, img_der, Hl, Hr)
 
     print("\n--- Rectificación No Calibrada (Hartley) ---")
     F = np.load("output/F.npy")
